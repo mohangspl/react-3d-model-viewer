@@ -1,9 +1,10 @@
+
 import React, { useState, useRef, Suspense } from 'react';
 import { Canvas, useFrame, ThreeEvent } from '@react-three/fiber';
 import { OrbitControls, useGLTF, Environment, Html } from '@react-three/drei';
 import * as THREE from 'three';
 import LoadingFallback from './LoadingFallback';
-import ModelInstructions from './ModelInstructions';
+import { Button } from './ui/button';
 
 interface SelectedMesh {
   mesh: THREE.Mesh;
@@ -12,11 +13,10 @@ interface SelectedMesh {
 
 interface ModelProps {
   url: string;
-  position: [number, number, number];
   onMeshClick: (mesh: THREE.Mesh, originalMaterial: THREE.Material | THREE.Material[]) => void;
 }
 
-const Model: React.FC<ModelProps> = ({ url, position, onMeshClick }) => {
+const Model: React.FC<ModelProps> = ({ url, onMeshClick }) => {
   try {
     const { scene } = useGLTF(url);
     const groupRef = useRef<THREE.Group>(null);
@@ -46,7 +46,7 @@ const Model: React.FC<ModelProps> = ({ url, position, onMeshClick }) => {
     }, [clonedScene]);
 
     return (
-      <group ref={groupRef} position={position}>
+      <group ref={groupRef} position={[0, 0, 0]}>
         <primitive 
           object={clonedScene} 
           onClick={handleClick}
@@ -63,7 +63,7 @@ const Model: React.FC<ModelProps> = ({ url, position, onMeshClick }) => {
     );
   } catch (error) {
     return (
-      <Html position={position}>
+      <Html position={[0, 0, 0]}>
         <div className="bg-red-600 text-white p-2 rounded">
           Failed to load model: {url}
         </div>
@@ -115,12 +115,12 @@ const Instructions: React.FC = () => {
 
 const ModelViewer: React.FC = () => {
   const [selectedMesh, setSelectedMesh] = useState<SelectedMesh | null>(null);
-  const [showInstructions, setShowInstructions] = useState(true);
+  const [currentModel, setCurrentModel] = useState<string | null>(null);
 
-  const modelPaths = [
-    '/models/model1.gltf',
-    '/models/model2.gltf',
-    '/models/model3.gltf'
+  const modelOptions = [
+    { label: 'Model 1', path: '/models/model1.gltf' },
+    { label: 'Model 2', path: '/models/model2.gltf' },
+    { label: 'Model 3', path: '/models/model3.gltf' }
   ];
 
   const handleMeshClick = (mesh: THREE.Mesh, originalMaterial: THREE.Material | THREE.Material[]) => {
@@ -153,8 +153,29 @@ const ModelViewer: React.FC = () => {
     }
   };
 
+  const handleModelSelect = (modelPath: string) => {
+    clearSelection();
+    setCurrentModel(modelPath);
+  };
+
   return (
     <div className="w-full h-screen relative">
+      {/* Model Selection Buttons */}
+      <div className="absolute top-4 left-1/2 transform -translate-x-1/2 z-10">
+        <div className="flex gap-2 bg-black bg-opacity-70 p-4 rounded-lg">
+          {modelOptions.map((model) => (
+            <Button
+              key={model.path}
+              onClick={() => handleModelSelect(model.path)}
+              variant={currentModel === model.path ? "default" : "outline"}
+              className="text-white"
+            >
+              {model.label}
+            </Button>
+          ))}
+        </div>
+      </div>
+
       <Suspense fallback={<LoadingFallback />}>
         <Canvas
           camera={{ position: [0, 5, 10], fov: 75 }}
@@ -178,15 +199,13 @@ const ModelViewer: React.FC = () => {
             enableDamping={true}
           />
 
-          {/* Load and display models */}
-          {modelPaths.map((path, index) => (
+          {/* Load and display selected model */}
+          {currentModel && (
             <Model
-              key={path}
-              url={path}
-              position={[(index - 1) * 4, 0, 0]} // Space models along X-axis
+              url={currentModel}
               onMeshClick={handleMeshClick}
             />
-          ))}
+          )}
 
           {/* Grid helper for reference */}
           <gridHelper args={[20, 20]} />
@@ -197,25 +216,16 @@ const ModelViewer: React.FC = () => {
       <DebugOverlay selectedMesh={selectedMesh} />
       <Instructions />
       
-      {/* Model setup instructions */}
-      {showInstructions && <ModelInstructions />}
-      
       {/* Control buttons */}
       <div className="absolute bottom-4 right-4 flex flex-col gap-2">
         {selectedMesh && (
-          <button
+          <Button
             onClick={clearSelection}
-            className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg transition-colors"
+            variant="destructive"
           >
             Clear Selection
-          </button>
+          </Button>
         )}
-        <button
-          onClick={() => setShowInstructions(!showInstructions)}
-          className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors"
-        >
-          {showInstructions ? 'Hide' : 'Show'} Setup
-        </button>
       </div>
     </div>
   );
