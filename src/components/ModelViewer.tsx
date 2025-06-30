@@ -1,5 +1,5 @@
 import React, { useState, useRef, Suspense } from 'react';
-import { Canvas, useFrame, ThreeElements } from '@react-three/fiber';
+import { Canvas, useFrame, ThreeEvent } from '@react-three/fiber';
 import { OrbitControls, useGLTF, Environment, Html } from '@react-three/drei';
 import * as THREE from 'three';
 import LoadingFallback from './LoadingFallback';
@@ -25,7 +25,7 @@ const Model: React.FC<ModelProps> = ({ url, position, onMeshClick }) => {
     const clonedScene = scene.clone();
 
     // Handle click events on meshes
-    const handleClick = (event: ThreeElements['mesh']) => {
+    const handleClick = (event: ThreeEvent<MouseEvent>) => {
       event.stopPropagation();
       const mesh = event.object as THREE.Mesh;
       if (mesh.isMesh) {
@@ -50,11 +50,11 @@ const Model: React.FC<ModelProps> = ({ url, position, onMeshClick }) => {
         <primitive 
           object={clonedScene} 
           onClick={handleClick}
-          onPointerOver={(e) => {
+          onPointerOver={(e: ThreeEvent<PointerEvent>) => {
             e.stopPropagation();
             document.body.style.cursor = 'pointer';
           }}
-          onPointerOut={(e) => {
+          onPointerOut={(e: ThreeEvent<PointerEvent>) => {
             e.stopPropagation();
             document.body.style.cursor = 'auto';
           }}
