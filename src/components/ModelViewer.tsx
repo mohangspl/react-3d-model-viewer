@@ -14,9 +14,10 @@ interface SelectedMesh {
 interface ModelProps {
   url: string;
   onMeshClick: (mesh: THREE.Mesh, originalMaterial: THREE.Material | THREE.Material[]) => void;
+  onError: (error: string) => void;
 }
 
-const Model: React.FC<ModelProps> = ({ url, onMeshClick }) => {
+const Model: React.FC<ModelProps> = ({ url, onMeshClick, onError }) => {
   try {
     const { scene } = useGLTF(url);
     const groupRef = useRef<THREE.Group>(null);
@@ -62,13 +63,9 @@ const Model: React.FC<ModelProps> = ({ url, onMeshClick }) => {
       </group>
     );
   } catch (error) {
-    return (
-      <Html position={[0, 0, 0]}>
-        <div className="bg-red-600 text-white p-2 rounded">
-          Failed to load model: {url}
-        </div>
-      </Html>
-    );
+    console.error('Model loading error:', error);
+    onError(`Failed to load model: ${url}`);
+    return null;
   }
 };
 
@@ -104,11 +101,15 @@ const Instructions: React.FC = () => {
     <div className="absolute bottom-4 left-4 bg-black bg-opacity-70 text-white p-4 rounded-lg max-w-md">
       <h3 className="font-bold mb-2">Controls</h3>
       <ul className="text-sm space-y-1">
+        <li>• <strong>Select Model:</strong> Click buttons above to load a model</li>
         <li>• <strong>Rotate:</strong> Left click + drag</li>
         <li>• <strong>Zoom:</strong> Mouse wheel</li>
         <li>• <strong>Pan:</strong> Right click + drag</li>
-        <li>• <strong>Select:</strong> Click on any mesh to highlight</li>
+        <li>• <strong>Select Mesh:</strong> Click on any part to highlight</li>
       </ul>
+      <div className="mt-2 text-xs text-yellow-300">
+        <p>Note: Place your .gltf and .bin files in the /public/models/ folder</p>
+      </div>
     </div>
   );
 };
@@ -116,6 +117,8 @@ const Instructions: React.FC = () => {
 const ModelViewer: React.FC = () => {
   const [selectedMesh, setSelectedMesh] = useState<SelectedMesh | null>(null);
   const [currentModel, setCurrentModel] = useState<string | null>(null);
+  const [modelError, setModelError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
 
   const modelOptions = [
     { label: 'Model 1', path: '/models/model1.gltf' },
@@ -155,7 +158,20 @@ const ModelViewer: React.FC = () => {
 
   const handleModelSelect = (modelPath: string) => {
     clearSelection();
+    setModelError(null);
+    setLoading(true);
     setCurrentModel(modelPath);
+  };
+
+  const handleModelError = (error: string) => {
+    setModelError(error);
+    setLoading(false);
+    setCurrentModel(null);
+  };
+
+  const handleModelLoad = () => {
+    setLoading(false);
+    setModelError(null);
   };
 
   return (
@@ -168,13 +184,25 @@ const ModelViewer: React.FC = () => {
               key={model.path}
               onClick={() => handleModelSelect(model.path)}
               variant={currentModel === model.path ? "default" : "outline"}
-              className="text-white"
+              className="text-white transition-none hover:bg-current hover:text-current"
+              disabled={loading}
             >
-              {model.label}
+              {loading && currentModel === model.path ? 'Loading...' : model.label}
             </Button>
           ))}
         </div>
       </div>
+
+      {/* Error Message */}
+      {modelError && (
+        <div className="absolute top-20 left-1/2 transform -translate-x-1/2 z-10">
+          <div className="bg-red-600 text-white p-4 rounded-lg max-w-md text-center">
+            <p className="font-bold">Error Loading Model</p>
+            <p className="text-sm mt-1">{modelError}</p>
+            <p className="text-xs mt-2">Make sure your .gltf and .bin files are in /public/models/</p>
+          </div>
+        </div>
+      )}
 
       <Suspense fallback={<LoadingFallback />}>
         <Canvas
@@ -200,10 +228,11 @@ const ModelViewer: React.FC = () => {
           />
 
           {/* Load and display selected model */}
-          {currentModel && (
+          {currentModel && !modelError && (
             <Model
               url={currentModel}
               onMeshClick={handleMeshClick}
+              onError={handleModelError}
             />
           )}
 
@@ -222,6 +251,7 @@ const ModelViewer: React.FC = () => {
           <Button
             onClick={clearSelection}
             variant="destructive"
+            className="transition-none hover:bg-current"
           >
             Clear Selection
           </Button>
