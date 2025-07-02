@@ -1,73 +1,111 @@
-# Welcome to your Lovable project
+# Model Vista Interactive React
 
-## Project info
+## Project Overview
 
-**URL**: https://lovable.dev/projects/4400e09d-53b1-4cb8-afb1-7381e0efe37d
+This project is a 3D model viewer built with React, Vite, TypeScript, Three.js, and shadcn-ui.
+It allows you to load, view, and interactively explore `.gltf` 3D models, including highlighting sub-parts of each model.
 
-## How can I edit this code?
+---
 
-There are several ways of editing your application.
+## Getting Started
 
-**Use Lovable**
+### Prerequisites
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/4400e09d-53b1-4cb8-afb1-7381e0efe37d) and start prompting.
+- **Node.js** (v18 or newer recommended)
+- **npm** (comes with Node.js)
 
-Changes made via Lovable will be committed automatically to this repo.
+### Installation
 
-**Use your preferred IDE**
+1. **Clone the repository:**
+   ```sh
+   git clone <YOUR_GIT_URL>
+   cd <YOUR_PROJECT_NAME>
+   ```
 
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
+2. **Install dependencies:**
+   ```sh
+   npm install
+   ```
 
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
+### Running the Development Server
 
-Follow these steps:
+Start the app in development mode (with hot reload):
 
 ```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
-
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
-
-# Step 3: Install the necessary dependencies.
-npm i
-
-# Step 4: Start the development server with auto-reloading and an instant preview.
 npm run dev
 ```
 
-**Edit a file directly in GitHub**
+- The app will be available at [http://localhost:8080](http://localhost:8080) (or the port shown in your terminal).
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+### Building for Production
 
-**Use GitHub Codespaces**
+To build the app for production:
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+```sh
+npm run build
+```
 
-## What technologies are used for this project?
+To preview the production build locally:
 
-This project is built with:
+```sh
+npm run preview
+```
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+---
 
-## How can I deploy this project?
+## 3D Model Usage
 
-Simply open [Lovable](https://lovable.dev/projects/4400e09d-53b1-4cb8-afb1-7381e0efe37d) and click on Share -> Publish.
+### Model File Structure
 
-## Can I connect a custom domain to my Lovable project?
+- Place your `.gltf` and corresponding `.bin` files in the `public/models/` directory.
+- Example:
+  ```
+  public/models/
+    model1.gltf
+    model1.bin
+    model21.gltf
+    model21.bin
+    model3.gltf
+    model3.bin
+  ```
 
-Yes, you can!
+### Converting CAD/STEP Files to `.gltf`
 
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
+If you have CAD or STEP files, convert them to `.gltf` using a tool like [Blender](https://www.blender.org/) or [FreeCAD](https://www.freecad.org/):
 
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/tips-tricks/custom-domain#step-by-step-guide)
+1. **Open your CAD/STEP file in Blender or FreeCAD.**
+2. **Export as `.gltf` (GL Transmission Format):**
+   - In Blender: `File > Export > glTF 2.0 (.gltf/.glb)`
+   - In FreeCAD: Use the `File > Export` dialog and select `.gltf`
+3. **Copy the exported `.gltf` and `.bin` files to `public/models/`**
+
+---
+
+## Project Structure
+
+- `src/` — React source code
+- `public/models/` — Place your `.gltf` and `.bin` model files here
+- `vite.config.ts` — Vite configuration (port 8080 by default)
+- `tailwind.config.ts` — Tailwind CSS config
+
+---
+
+## Troubleshooting
+
+- If models do not appear, ensure your `.gltf` and `.bin` files are correctly placed in `public/models/` and referenced in the UI.
+- If you change model files, restart the dev server to clear cache.
+
+---
+
+## Technologies Used
+
+- React, Vite, TypeScript
+- Three.js, @react-three/fiber, @react-three/drei
+- shadcn-ui, Tailwind CSS
+
+---
+
+## License
+
+This project is for internal/demo use.
+For questions or contributions, please open an issue or pull request.

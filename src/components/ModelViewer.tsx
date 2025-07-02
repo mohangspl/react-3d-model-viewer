@@ -1,10 +1,10 @@
-
 import React, { useState, useRef, Suspense } from 'react';
-import { Canvas, useFrame, ThreeEvent } from '@react-three/fiber';
+import { Canvas, useFrame, ThreeEvent, useThree } from '@react-three/fiber';
 import { OrbitControls, useGLTF, Environment, Html } from '@react-three/drei';
 import * as THREE from 'three';
 import LoadingFallback from './LoadingFallback';
 import { Button } from './ui/button';
+import { ErrorBoundary } from "./ErrorBoundary";
 
 interface SelectedMesh {
   mesh: THREE.Mesh;
@@ -14,103 +14,360 @@ interface SelectedMesh {
 interface ModelProps {
   url: string;
   onMeshClick: (mesh: THREE.Mesh, originalMaterial: THREE.Material | THREE.Material[]) => void;
-  onError: (error: string) => void;
+  onLoad: () => void;
 }
 
-const Model: React.FC<ModelProps> = ({ url, onMeshClick, onError }) => {
-  try {
-    const { scene } = useGLTF(url);
-    const groupRef = useRef<THREE.Group>(null);
+// Model: unified centering, scaling, and orientation logic
+const Model: React.FC<ModelProps> = ({ url, onMeshClick, onLoad }) => {
+  const { scene } = useGLTF(url);
+  const groupRef = useRef<THREE.Group>(null);
+  const [highlightedMesh, setHighlightedMesh] = React.useState<THREE.Mesh | null>(null);
+  const [originalMaterial, setOriginalMaterial] = React.useState<THREE.Material | THREE.Material[] | null>(null);
 
-    // Clone the scene to avoid sharing materials between instances
-    const clonedScene = scene.clone();
+  // Clone the scene to avoid sharing materials between instances
+  const clonedScene = scene.clone();
 
-    // Handle click events on meshes
-    const handleClick = (event: ThreeEvent<MouseEvent>) => {
-      event.stopPropagation();
-      const mesh = event.object as THREE.Mesh;
-      if (mesh.isMesh) {
-        onMeshClick(mesh, mesh.material);
+  // Set all mesh materials to light gray by default
+  React.useEffect(() => {
+    if (clonedScene) {
+      clonedScene.traverse((child) => {
+        if (child instanceof THREE.Mesh) {
+          if (child.material && child.material.color) {
+            child.material.color.set('#e0e0e0');
+          }
+        }
+      });
+    }
+  }, [clonedScene]);
+
+  // Center, scale, and orient the model to fit the view and appear upright (same as Model3)
+  React.useEffect(() => {
+    if (!clonedScene) return;
+    const box = new THREE.Box3().setFromObject(clonedScene);
+    const size = new THREE.Vector3();
+    box.getSize(size);
+    const center = new THREE.Vector3();
+    box.getCenter(center);
+
+    // Shift the model to center at origin
+    clonedScene.position.sub(center);
+
+    // Scale to fit
+    const maxDim = Math.max(size.x, size.y, size.z);
+    const targetSize = 8;
+    const scale = maxDim > 0 ? targetSize / maxDim : 1;
+    clonedScene.scale.setScalar(scale);
+
+    // Correct orientation to upright
+    clonedScene.rotation.x = Math.PI / 2;
+
+    // Adjust vertically so it's fully visible (shift slightly upward if needed)
+    const heightOffset = size.y * 0.25;
+    clonedScene.position.y += heightOffset;
+  }, [clonedScene]);
+
+  React.useEffect(() => { onLoad(); }, []);
+
+  // Restore previous highlight
+  React.useEffect(() => {
+    return () => {
+      if (highlightedMesh && originalMaterial) {
+        highlightedMesh.material = originalMaterial;
       }
     };
+  }, [highlightedMesh, originalMaterial]);
 
-    // Traverse the model and add click handlers to all meshes
-    React.useEffect(() => {
-      if (clonedScene) {
-        clonedScene.traverse((child) => {
-          if (child instanceof THREE.Mesh) {
-            // Store original material reference
-            child.userData.originalMaterial = child.material;
-          }
-        });
+  // Highlight logic for any sub-mesh
+  const handleClick = (event: ThreeEvent<MouseEvent>) => {
+    event.stopPropagation();
+    const mesh = event.object as THREE.Mesh;
+    if (mesh.isMesh) {
+      // Restore previous
+      if (highlightedMesh && originalMaterial) {
+        highlightedMesh.material = originalMaterial;
       }
-    }, [clonedScene]);
+      // Highlight new
+      setOriginalMaterial(mesh.material);
+      setHighlightedMesh(mesh);
+      const highlightMaterial = new THREE.MeshStandardMaterial({
+        color: 0xff0000,
+        emissive: 0x440000,
+        transparent: true,
+        opacity: 0.8
+      });
+      onMeshClick(mesh, mesh.material);
+      mesh.material = highlightMaterial;
+      // Keep highlight for 2 seconds
+      setTimeout(() => {
+        if (mesh.material === highlightMaterial) {
+          mesh.material = originalMaterial;
+          setHighlightedMesh(null);
+          setOriginalMaterial(null);
+        }
+      }, 2000);
+    }
+  };
 
-    return (
-      <group ref={groupRef} position={[0, 0, 0]}>
-        <primitive 
-          object={clonedScene} 
-          onClick={handleClick}
-          onPointerOver={(e: ThreeEvent<PointerEvent>) => {
-            e.stopPropagation();
-            document.body.style.cursor = 'pointer';
-          }}
-          onPointerOut={(e: ThreeEvent<PointerEvent>) => {
-            e.stopPropagation();
-            document.body.style.cursor = 'auto';
-          }}
-        />
-      </group>
-    );
-  } catch (error) {
-    console.error('Model loading error:', error);
-    onError(`Failed to load model: ${url}`);
-    return null;
-  }
-};
+  // Recursively attach event handlers to all meshes
+  React.useEffect(() => {
+    if (clonedScene) {
+      clonedScene.traverse((child) => {
+        if (child instanceof THREE.Mesh) {
+          child.userData.originalMaterial = child.material;
+          // Do not assign event handlers directly to mesh objects
+        }
+      });
+    }
+  }, [clonedScene]);
 
-const DebugOverlay: React.FC<{ selectedMesh: SelectedMesh | null }> = ({ selectedMesh }) => {
   return (
-    <div className="absolute top-4 left-4 bg-black bg-opacity-70 text-white p-4 rounded-lg font-mono text-sm max-w-md">
-      <h3 className="font-bold mb-2">Debug Info</h3>
-      {selectedMesh ? (
-        <div>
-          <p><strong>Selected Mesh:</strong> {selectedMesh.mesh.name || 'Unnamed'}</p>
-          <p><strong>Position:</strong> 
-            {` x: ${selectedMesh.mesh.position.x.toFixed(2)}`}
-            {`, y: ${selectedMesh.mesh.position.y.toFixed(2)}`}
-            {`, z: ${selectedMesh.mesh.position.z.toFixed(2)}`}
-          </p>
-          <p><strong>World Position:</strong>
-            {(() => {
-              const worldPos = new THREE.Vector3();
-              selectedMesh.mesh.getWorldPosition(worldPos);
-              return ` x: ${worldPos.x.toFixed(2)}, y: ${worldPos.y.toFixed(2)}, z: ${worldPos.z.toFixed(2)}`;
-            })()}
-          </p>
-        </div>
-      ) : (
-        <p>Click on a mesh to see debug info</p>
-      )}
-    </div>
+    <group ref={groupRef} position={[0, 0, 0]}>
+      <primitive
+        object={clonedScene}
+        onClick={handleClick}
+        onPointerOver={(e: ThreeEvent<PointerEvent>) => {
+          e.stopPropagation();
+          document.body.style.cursor = 'pointer';
+        }}
+        onPointerOut={(e: ThreeEvent<PointerEvent>) => {
+          e.stopPropagation();
+          document.body.style.cursor = 'auto';
+        }}
+      />
+    </group>
   );
 };
 
-const Instructions: React.FC = () => {
+// Model2: render clonedScene directly, just like Model1/Model3
+const Model2: React.FC<Omit<ModelProps, 'url'>> = ({ onMeshClick, onLoad }) => {
+  const gltf = useGLTF('/models/model21.gltf');
+  const { scene } = gltf as any;
+  const groupRef = useRef<THREE.Group>(null);
+  const [group, setGroup] = React.useState<THREE.Group | null>(null);
+  const [highlightedMesh, setHighlightedMesh] = React.useState<THREE.Mesh | null>(null);
+  const [originalMaterial, setOriginalMaterial] = React.useState<THREE.Material | THREE.Material[] | null>(null);
+  if (!scene) {
+    return (
+      <group>
+        <mesh>
+          <boxGeometry args={[1, 1, 1]} />
+          <meshStandardMaterial color="red" />
+        </mesh>
+        <Html center style={{ color: 'white', background: 'rgba(255,0,0,0.8)', padding: 8, borderRadius: 4 }}>
+          Invalid glTF file: missing scene
+        </Html>
+      </group>
+    );
+  }
+
+  // Clone the scene to avoid sharing materials between instances
+  const clonedScene = scene.clone(true);
+
+  React.useEffect(() => {
+    // Create a new group and add the cloned scene
+    const centerGroup = new THREE.Group();
+    centerGroup.add(clonedScene);
+
+    // Center, scale, and rotate the group
+    const box = new THREE.Box3().setFromObject(clonedScene);
+    const size = new THREE.Vector3();
+    box.getSize(size);
+    const center = new THREE.Vector3();
+    box.getCenter(center);
+    centerGroup.position.set(0, 0, 0);
+    centerGroup.scale.set(1, 1, 1);
+    centerGroup.rotation.set(0, 0, 0);
+    // Center the model
+    clonedScene.position.sub(center);
+    // Scale to fit
+    const maxDim = Math.max(size.x, size.y, size.z);
+    const targetSize = 8;
+    const scale = maxDim > 0 ? targetSize / maxDim : 1;
+    centerGroup.scale.setScalar(scale);
+    // Upright orientation
+    centerGroup.rotation.x = Math.PI / 2;
+
+    setGroup(centerGroup);
+  }, [clonedScene]);
+
+  React.useEffect(() => { onLoad(); }, []);
+
+  // Restore previous highlight on unmount or mesh change
+  React.useEffect(() => {
+    return () => {
+      if (highlightedMesh && originalMaterial) {
+        highlightedMesh.material = originalMaterial;
+      }
+    };
+  }, [highlightedMesh, originalMaterial]);
+
+  // Highlight logic for any sub-mesh
+  const handleClick = (event: ThreeEvent<MouseEvent>) => {
+    event.stopPropagation();
+    const mesh = event.object as THREE.Mesh;
+    if (mesh.isMesh) {
+      // Restore previous
+      if (highlightedMesh && originalMaterial) {
+        highlightedMesh.material = originalMaterial;
+      }
+      // Highlight new
+      setOriginalMaterial(mesh.material);
+      setHighlightedMesh(mesh);
+      const highlightMaterial = new THREE.MeshStandardMaterial({
+        color: 0xff0000,
+        emissive: 0x440000,
+        transparent: true,
+        opacity: 0.8
+      });
+      onMeshClick(mesh, mesh.material);
+      mesh.material = highlightMaterial;
+      // Keep highlight for 2 seconds
+      setTimeout(() => {
+        if (mesh.material === highlightMaterial) {
+          mesh.material = originalMaterial;
+          setHighlightedMesh(null);
+          setOriginalMaterial(null);
+        }
+      }, 2000);
+    }
+  };
+
+  React.useEffect(() => {
+    if (clonedScene) {
+      clonedScene.traverse((child) => {
+        if (child instanceof THREE.Mesh) {
+          child.userData.originalMaterial = child.material;
+        }
+      });
+    }
+  }, [clonedScene]);
+
+  if (!group) return null;
+
   return (
-    <div className="absolute bottom-4 left-4 bg-black bg-opacity-70 text-white p-4 rounded-lg max-w-md">
-      <h3 className="font-bold mb-2">Controls</h3>
-      <ul className="text-sm space-y-1">
-        <li>• <strong>Select Model:</strong> Click buttons above to load a model</li>
-        <li>• <strong>Rotate:</strong> Left click + drag</li>
-        <li>• <strong>Zoom:</strong> Mouse wheel</li>
-        <li>• <strong>Pan:</strong> Right click + drag</li>
-        <li>• <strong>Select Mesh:</strong> Click on any part to highlight</li>
-      </ul>
-      <div className="mt-2 text-xs text-yellow-300">
-        <p>Note: Place your .gltf and .bin files in the /public/models/ folder</p>
-      </div>
-    </div>
+    <group ref={groupRef} position={[0, 0, 0]}>
+      <primitive
+        object={group}
+        onClick={handleClick}
+        onPointerOver={(e: ThreeEvent<PointerEvent>) => {
+          e.stopPropagation();
+          document.body.style.cursor = 'pointer';
+        }}
+        onPointerOut={(e: ThreeEvent<PointerEvent>) => {
+          e.stopPropagation();
+          document.body.style.cursor = 'auto';
+        }}
+      />
+    </group>
+  );
+};
+
+// Model3: ensure identical logic to Model
+const Model3: React.FC<Omit<ModelProps, 'url'>> = ({ onMeshClick, onLoad }) => {
+  const { scene } = useGLTF('/models/model3.gltf');
+  const groupRef = useRef<THREE.Group>(null);
+  const [highlightedMesh, setHighlightedMesh] = React.useState<THREE.Mesh | null>(null);
+  const [originalMaterial, setOriginalMaterial] = React.useState<THREE.Material | THREE.Material[] | null>(null);
+  const [group, setGroup] = React.useState<THREE.Group | null>(null);
+
+  // Clone the scene to avoid sharing materials between instances
+  const clonedScene = scene.clone();
+
+  React.useEffect(() => {
+    // Create a new group and add the cloned scene
+    const centerGroup = new THREE.Group();
+    centerGroup.add(clonedScene);
+
+    // Center, scale, and rotate the group
+    const box = new THREE.Box3().setFromObject(clonedScene);
+    const size = new THREE.Vector3();
+    box.getSize(size);
+    const center = new THREE.Vector3();
+    box.getCenter(center);
+    centerGroup.position.set(0, 0, 0);
+    centerGroup.scale.set(1, 1, 1);
+    centerGroup.rotation.set(0, 0, 0);
+    // Center the model
+    clonedScene.position.sub(center);
+    // Scale to fit
+    const maxDim = Math.max(size.x, size.y, size.z);
+    const targetSize = 8;
+    const scale = maxDim > 0 ? targetSize / maxDim : 1;
+    centerGroup.scale.setScalar(scale);
+    // Upright orientation
+    centerGroup.rotation.x = Math.PI / 2;
+    setGroup(centerGroup);
+  }, [clonedScene]);
+
+  React.useEffect(() => { onLoad(); }, []);
+
+  // Restore previous highlight
+  React.useEffect(() => {
+    return () => {
+      if (highlightedMesh && originalMaterial) {
+        highlightedMesh.material = originalMaterial;
+      }
+    };
+  }, [highlightedMesh, originalMaterial]);
+
+  // Highlight logic for any sub-mesh
+  const handleClick = (event: ThreeEvent<MouseEvent>) => {
+    event.stopPropagation();
+    const mesh = event.object as THREE.Mesh;
+    if (mesh.isMesh) {
+      // Restore previous
+      if (highlightedMesh && originalMaterial) {
+        highlightedMesh.material = originalMaterial;
+      }
+      // Highlight new
+      setOriginalMaterial(mesh.material);
+      setHighlightedMesh(mesh);
+      const highlightMaterial = new THREE.MeshStandardMaterial({
+        color: 0xff0000,
+        emissive: 0x440000,
+        transparent: true,
+        opacity: 0.8
+      });
+      onMeshClick(mesh, mesh.material);
+      mesh.material = highlightMaterial;
+      // Keep highlight for 2 seconds
+      setTimeout(() => {
+        if (mesh.material === highlightMaterial) {
+          mesh.material = originalMaterial;
+          setHighlightedMesh(null);
+          setOriginalMaterial(null);
+        }
+      }, 2000);
+    }
+  };
+
+  React.useEffect(() => {
+    if (clonedScene) {
+      clonedScene.traverse((child) => {
+        if (child instanceof THREE.Mesh) {
+          child.userData.originalMaterial = child.material;
+        }
+      });
+    }
+  }, [clonedScene]);
+
+  if (!group) return null;
+
+  return (
+    <group ref={groupRef} position={[0, 0, 0]}>
+      <primitive
+        object={group}
+        onClick={handleClick}
+        onPointerOver={(e: ThreeEvent<PointerEvent>) => {
+          e.stopPropagation();
+          document.body.style.cursor = 'pointer';
+        }}
+        onPointerOut={(e: ThreeEvent<PointerEvent>) => {
+          e.stopPropagation();
+          document.body.style.cursor = 'auto';
+        }}
+      />
+    </group>
   );
 };
 
@@ -119,10 +376,11 @@ const ModelViewer: React.FC = () => {
   const [currentModel, setCurrentModel] = useState<string | null>(null);
   const [modelError, setModelError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const orbitControlsRef = React.useRef<any>(null);
 
   const modelOptions = [
     { label: 'Model 1', path: '/models/model1.gltf' },
-    { label: 'Model 2', path: '/models/model2.gltf' },
+    { label: 'Model 2', path: '/models/model21.gltf' },
     { label: 'Model 3', path: '/models/model3.gltf' }
   ];
 
@@ -174,88 +432,77 @@ const ModelViewer: React.FC = () => {
     setModelError(null);
   };
 
-  return (
-    <div className="w-full h-screen relative">
-      {/* Model Selection Buttons */}
-      <div className="absolute top-4 left-1/2 transform -translate-x-1/2 z-10">
-        <div className="flex gap-2 bg-black bg-opacity-70 p-4 rounded-lg">
-          {modelOptions.map((model) => (
-            <Button
-              key={model.path}
-              onClick={() => handleModelSelect(model.path)}
-              variant={currentModel === model.path ? "default" : "outline"}
-              className="text-white transition-none hover:bg-current hover:text-current"
-              disabled={loading}
-            >
-              {loading && currentModel === model.path ? 'Loading...' : model.label}
-            </Button>
-          ))}
-        </div>
-      </div>
+  // Handler to reset camera and controls
+  const handleResetView = () => {
+    if (orbitControlsRef.current) {
+      orbitControlsRef.current.reset();
+    }
+  };
 
-      {/* Error Message */}
-      {modelError && (
-        <div className="absolute top-20 left-1/2 transform -translate-x-1/2 z-10">
-          <div className="bg-red-600 text-white p-4 rounded-lg max-w-md text-center">
-            <p className="font-bold">Error Loading Model</p>
-            <p className="text-sm mt-1">{modelError}</p>
-            <p className="text-xs mt-2">Make sure your .gltf and .bin files are in /public/models/</p>
+  return (
+    <div style={{ width: '100vw', height: '100vh', background: 'white', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+      {/* Heading and Model Selection Buttons OUTSIDE the black flexbox */}
+      <h2 style={{ margin: '24px 0 8px 0', fontWeight: 600, fontSize: 24, color: '#222', textAlign: 'center' }}>3D Model Viewer</h2>
+      <div style={{ marginBottom: 24, display: 'flex', gap: 12, justifyContent: 'center' }}>
+        {modelOptions.map((model, idx) => (
+          <Button
+            key={model.path}
+            onClick={() => handleModelSelect(model.path)}
+            className={`transition-none ${currentModel === model.path ? 'bg-blue-600 text-white' : 'bg-gray-700 text-white'} ${idx === 0 || idx === 1 ? '' : ''}`}
+            disabled={loading}
+          >
+            {loading && currentModel === model.path ? 'Loading...' : model.label}
+          </Button>
+        ))}
+      </div>
+      {/* Reset View Button */}
+      <div style={{ marginBottom: 16 }}>
+        <Button onClick={handleResetView} className="bg-gray-500 text-white hover:bg-gray-700">Reset View</Button>
+      </div>
+      {/* Black flexbox containing the 3D viewer */}
+      <div style={{ width: '50vw', height: '50vh', background: 'black', boxShadow: '0 2px 16px rgba(0,0,0,0.08)', borderRadius: 16, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
+        <div style={{ flex: 1, width: '100%', height: '100%', position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+          {/* 3D Canvas */}
+          <div style={{ width: '100%', height: '100%', position: 'relative' }}>
+            <Suspense fallback={<LoadingFallback />}>
+              <Canvas camera={{ position: [0, 0, 16], fov: 45 }} shadows style={{ background: 'transparent' }}>
+                <ambientLight intensity={0.7} />
+                <directionalLight position={[10, 10, 10]} intensity={0.7} />
+                {currentModel && !modelError && (
+                  <ErrorBoundary key={currentModel} onError={handleModelError}>
+                    {currentModel === '/models/model1.gltf' ? (
+                      <Model
+                        url={currentModel}
+                        onMeshClick={handleMeshClick}
+                        onLoad={handleModelLoad}
+                      />
+                    ) : currentModel === '/models/model21.gltf' ? (
+                      <Model2
+                        onMeshClick={handleMeshClick}
+                        onLoad={handleModelLoad}
+                      />
+                    ) : currentModel === '/models/model3.gltf' ? (
+                      <Model3
+                        onMeshClick={handleMeshClick}
+                        onLoad={handleModelLoad}
+                      />
+                    ) : null}
+                  </ErrorBoundary>
+                )}
+                <OrbitControls ref={orbitControlsRef} enablePan enableZoom enableRotate />
+                <Environment preset="city" />
+              </Canvas>
+            </Suspense>
+            {/* Error message */}
+            {modelError && (
+              <div className="absolute inset-0 flex items-center justify-center bg-white bg-opacity-90 z-20">
+                <div className="text-red-600 font-semibold text-lg p-4 rounded shadow bg-white border border-red-200">
+                  {modelError}
+                </div>
+              </div>
+            )}
           </div>
         </div>
-      )}
-
-      <Suspense fallback={<LoadingFallback />}>
-        <Canvas
-          camera={{ position: [0, 5, 10], fov: 75 }}
-          onClick={clearSelection}
-          className="bg-gray-900"
-        >
-          {/* Lighting */}
-          <ambientLight intensity={0.3} />
-          <directionalLight position={[10, 10, 5]} intensity={1} castShadow />
-          <directionalLight position={[-10, -10, -5]} intensity={0.5} />
-
-          {/* Environment */}
-          <Environment preset="studio" />
-
-          {/* Controls */}
-          <OrbitControls
-            enablePan={true}
-            enableZoom={true}
-            enableRotate={true}
-            dampingFactor={0.1}
-            enableDamping={true}
-          />
-
-          {/* Load and display selected model */}
-          {currentModel && !modelError && (
-            <Model
-              url={currentModel}
-              onMeshClick={handleMeshClick}
-              onError={handleModelError}
-            />
-          )}
-
-          {/* Grid helper for reference */}
-          <gridHelper args={[20, 20]} />
-        </Canvas>
-      </Suspense>
-
-      {/* UI Overlays */}
-      <DebugOverlay selectedMesh={selectedMesh} />
-      <Instructions />
-      
-      {/* Control buttons */}
-      <div className="absolute bottom-4 right-4 flex flex-col gap-2">
-        {selectedMesh && (
-          <Button
-            onClick={clearSelection}
-            variant="destructive"
-            className="transition-none hover:bg-current"
-          >
-            Clear Selection
-          </Button>
-        )}
       </div>
     </div>
   );
