@@ -21,24 +21,9 @@ interface ModelProps {
 const Model: React.FC<ModelProps> = ({ url, onMeshClick, onLoad }) => {
   const { scene } = useGLTF(url);
   const groupRef = useRef<THREE.Group>(null);
-  const [highlightedMesh, setHighlightedMesh] = React.useState<THREE.Mesh | null>(null);
-  const [originalMaterial, setOriginalMaterial] = React.useState<THREE.Material | THREE.Material[] | null>(null);
 
   // Clone the scene to avoid sharing materials between instances
   const clonedScene = scene.clone();
-
-  // Set all mesh materials to light gray by default
-  React.useEffect(() => {
-    if (clonedScene) {
-      clonedScene.traverse((child) => {
-        if (child instanceof THREE.Mesh) {
-          if (child.material && child.material.color) {
-            child.material.color.set('#e0e0e0');
-          }
-        }
-      });
-    }
-  }, [clonedScene]);
 
   // Center, scale, and orient the model to fit the view and appear upright (same as Model3)
   React.useEffect(() => {
@@ -68,71 +53,10 @@ const Model: React.FC<ModelProps> = ({ url, onMeshClick, onLoad }) => {
 
   React.useEffect(() => { onLoad(); }, []);
 
-  // Restore previous highlight
-  React.useEffect(() => {
-    return () => {
-      if (highlightedMesh && originalMaterial) {
-        highlightedMesh.material = originalMaterial;
-      }
-    };
-  }, [highlightedMesh, originalMaterial]);
-
-  // Highlight logic for any sub-mesh
-  const handleClick = (event: ThreeEvent<MouseEvent>) => {
-    event.stopPropagation();
-    const mesh = event.object as THREE.Mesh;
-    if (mesh.isMesh) {
-      // Restore previous
-      if (highlightedMesh && originalMaterial) {
-        highlightedMesh.material = originalMaterial;
-      }
-      // Highlight new
-      setOriginalMaterial(mesh.material);
-      setHighlightedMesh(mesh);
-      const highlightMaterial = new THREE.MeshStandardMaterial({
-        color: 0xff0000,
-        emissive: 0x440000,
-        transparent: true,
-        opacity: 0.8
-      });
-      onMeshClick(mesh, mesh.material);
-      mesh.material = highlightMaterial;
-      // Keep highlight for 2 seconds
-      setTimeout(() => {
-        if (mesh.material === highlightMaterial) {
-          mesh.material = originalMaterial;
-          setHighlightedMesh(null);
-          setOriginalMaterial(null);
-        }
-      }, 2000);
-    }
-  };
-
-  // Recursively attach event handlers to all meshes
-  React.useEffect(() => {
-    if (clonedScene) {
-      clonedScene.traverse((child) => {
-        if (child instanceof THREE.Mesh) {
-          child.userData.originalMaterial = child.material;
-          // Do not assign event handlers directly to mesh objects
-        }
-      });
-    }
-  }, [clonedScene]);
-
   return (
     <group ref={groupRef} position={[0, 0, 0]}>
       <primitive
         object={clonedScene}
-        onClick={handleClick}
-        onPointerOver={(e: ThreeEvent<PointerEvent>) => {
-          e.stopPropagation();
-          document.body.style.cursor = 'pointer';
-        }}
-        onPointerOut={(e: ThreeEvent<PointerEvent>) => {
-          e.stopPropagation();
-          document.body.style.cursor = 'auto';
-        }}
       />
     </group>
   );
@@ -144,8 +68,7 @@ const Model2: React.FC<Omit<ModelProps, 'url'>> = ({ onMeshClick, onLoad }) => {
   const { scene } = gltf as any;
   const groupRef = useRef<THREE.Group>(null);
   const [group, setGroup] = React.useState<THREE.Group | null>(null);
-  const [highlightedMesh, setHighlightedMesh] = React.useState<THREE.Mesh | null>(null);
-  const [originalMaterial, setOriginalMaterial] = React.useState<THREE.Material | THREE.Material[] | null>(null);
+
   if (!scene) {
     return (
       <group>
@@ -192,71 +115,12 @@ const Model2: React.FC<Omit<ModelProps, 'url'>> = ({ onMeshClick, onLoad }) => {
 
   React.useEffect(() => { onLoad(); }, []);
 
-  // Restore previous highlight on unmount or mesh change
-  React.useEffect(() => {
-    return () => {
-      if (highlightedMesh && originalMaterial) {
-        highlightedMesh.material = originalMaterial;
-      }
-    };
-  }, [highlightedMesh, originalMaterial]);
-
-  // Highlight logic for any sub-mesh
-  const handleClick = (event: ThreeEvent<MouseEvent>) => {
-    event.stopPropagation();
-    const mesh = event.object as THREE.Mesh;
-    if (mesh.isMesh) {
-      // Restore previous
-      if (highlightedMesh && originalMaterial) {
-        highlightedMesh.material = originalMaterial;
-      }
-      // Highlight new
-      setOriginalMaterial(mesh.material);
-      setHighlightedMesh(mesh);
-      const highlightMaterial = new THREE.MeshStandardMaterial({
-        color: 0xff0000,
-        emissive: 0x440000,
-        transparent: true,
-        opacity: 0.8
-      });
-      onMeshClick(mesh, mesh.material);
-      mesh.material = highlightMaterial;
-      // Keep highlight for 2 seconds
-      setTimeout(() => {
-        if (mesh.material === highlightMaterial) {
-          mesh.material = originalMaterial;
-          setHighlightedMesh(null);
-          setOriginalMaterial(null);
-        }
-      }, 2000);
-    }
-  };
-
-  React.useEffect(() => {
-    if (clonedScene) {
-      clonedScene.traverse((child) => {
-        if (child instanceof THREE.Mesh) {
-          child.userData.originalMaterial = child.material;
-        }
-      });
-    }
-  }, [clonedScene]);
-
   if (!group) return null;
 
   return (
     <group ref={groupRef} position={[0, 0, 0]}>
-      <primitive
+      <primitive 
         object={group}
-        onClick={handleClick}
-        onPointerOver={(e: ThreeEvent<PointerEvent>) => {
-          e.stopPropagation();
-          document.body.style.cursor = 'pointer';
-        }}
-        onPointerOut={(e: ThreeEvent<PointerEvent>) => {
-          e.stopPropagation();
-          document.body.style.cursor = 'auto';
-        }}
       />
     </group>
   );
@@ -266,8 +130,6 @@ const Model2: React.FC<Omit<ModelProps, 'url'>> = ({ onMeshClick, onLoad }) => {
 const Model3: React.FC<Omit<ModelProps, 'url'>> = ({ onMeshClick, onLoad }) => {
   const { scene } = useGLTF('/models/model3.gltf');
   const groupRef = useRef<THREE.Group>(null);
-  const [highlightedMesh, setHighlightedMesh] = React.useState<THREE.Mesh | null>(null);
-  const [originalMaterial, setOriginalMaterial] = React.useState<THREE.Material | THREE.Material[] | null>(null);
   const [group, setGroup] = React.useState<THREE.Group | null>(null);
 
   // Clone the scene to avoid sharing materials between instances
@@ -301,71 +163,12 @@ const Model3: React.FC<Omit<ModelProps, 'url'>> = ({ onMeshClick, onLoad }) => {
 
   React.useEffect(() => { onLoad(); }, []);
 
-  // Restore previous highlight
-  React.useEffect(() => {
-    return () => {
-      if (highlightedMesh && originalMaterial) {
-        highlightedMesh.material = originalMaterial;
-      }
-    };
-  }, [highlightedMesh, originalMaterial]);
-
-  // Highlight logic for any sub-mesh
-  const handleClick = (event: ThreeEvent<MouseEvent>) => {
-    event.stopPropagation();
-    const mesh = event.object as THREE.Mesh;
-    if (mesh.isMesh) {
-      // Restore previous
-      if (highlightedMesh && originalMaterial) {
-        highlightedMesh.material = originalMaterial;
-      }
-      // Highlight new
-      setOriginalMaterial(mesh.material);
-      setHighlightedMesh(mesh);
-      const highlightMaterial = new THREE.MeshStandardMaterial({
-        color: 0xff0000,
-        emissive: 0x440000,
-        transparent: true,
-        opacity: 0.8
-      });
-      onMeshClick(mesh, mesh.material);
-      mesh.material = highlightMaterial;
-      // Keep highlight for 2 seconds
-      setTimeout(() => {
-        if (mesh.material === highlightMaterial) {
-          mesh.material = originalMaterial;
-          setHighlightedMesh(null);
-          setOriginalMaterial(null);
-        }
-      }, 2000);
-    }
-  };
-
-  React.useEffect(() => {
-    if (clonedScene) {
-      clonedScene.traverse((child) => {
-        if (child instanceof THREE.Mesh) {
-          child.userData.originalMaterial = child.material;
-        }
-      });
-    }
-  }, [clonedScene]);
-
   if (!group) return null;
 
   return (
     <group ref={groupRef} position={[0, 0, 0]}>
       <primitive
         object={group}
-        onClick={handleClick}
-        onPointerOver={(e: ThreeEvent<PointerEvent>) => {
-          e.stopPropagation();
-          document.body.style.cursor = 'pointer';
-        }}
-        onPointerOut={(e: ThreeEvent<PointerEvent>) => {
-          e.stopPropagation();
-          document.body.style.cursor = 'auto';
-        }}
       />
     </group>
   );
@@ -444,55 +247,64 @@ const ModelViewer: React.FC = () => {
       {/* Heading and Model Selection Buttons OUTSIDE the black flexbox */}
       <h2 style={{ margin: '24px 0 8px 0', fontWeight: 600, fontSize: 24, color: '#222', textAlign: 'center' }}>3D Model Viewer</h2>
       <div style={{ marginBottom: 24, display: 'flex', gap: 12, justifyContent: 'center' }}>
-        {modelOptions.map((model, idx) => (
-          <Button
-            key={model.path}
-            onClick={() => handleModelSelect(model.path)}
-            className={`transition-none ${currentModel === model.path ? 'bg-blue-600 text-white' : 'bg-gray-700 text-white'} ${idx === 0 || idx === 1 ? '' : ''}`}
-            disabled={loading}
-          >
-            {loading && currentModel === model.path ? 'Loading...' : model.label}
-          </Button>
-        ))}
-      </div>
-      {/* Reset View Button */}
-      <div style={{ marginBottom: 16 }}>
-        <Button onClick={handleResetView} className="bg-gray-500 text-white hover:bg-gray-700">Reset View</Button>
-      </div>
+          {modelOptions.map((model, idx) => (
+            <Button
+              key={model.path}
+              onClick={() => handleModelSelect(model.path)}
+              className={`transition-none ${currentModel === model.path ? 'bg-blue-600 text-white' : 'bg-gray-700 text-white'} ${idx === 0 || idx === 1 ? '' : ''}`}
+              disabled={loading}
+            >
+              {loading && currentModel === model.path ? 'Loading...' : model.label}
+            </Button>
+          ))}
+        </div>
       {/* Black flexbox containing the 3D viewer */}
-      <div style={{ width: '50vw', height: '50vh', background: 'black', boxShadow: '0 2px 16px rgba(0,0,0,0.08)', borderRadius: 16, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
+      <div style={{ width: '50vw', height: '50vh', background: '#D2E3EB', boxShadow: '0 2px 16px rgba(0,0,0,0.08)', borderRadius: 16, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
+        {/* Reset View Button in top right corner */}
+        <div style={{ position: 'absolute', top: 16, right: 16, zIndex: 10 }}>
+          <Button onClick={handleResetView} className="bg-gray-500 text-white hover:bg-gray-700">Reset View</Button>
+        </div>
         <div style={{ flex: 1, width: '100%', height: '100%', position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
           {/* 3D Canvas */}
           <div style={{ width: '100%', height: '100%', position: 'relative' }}>
-            <Suspense fallback={<LoadingFallback />}>
-              <Canvas camera={{ position: [0, 0, 16], fov: 45 }} shadows style={{ background: 'transparent' }}>
-                <ambientLight intensity={0.7} />
-                <directionalLight position={[10, 10, 10]} intensity={0.7} />
-                {currentModel && !modelError && (
-                  <ErrorBoundary key={currentModel} onError={handleModelError}>
-                    {currentModel === '/models/model1.gltf' ? (
-                      <Model
-                        url={currentModel}
-                        onMeshClick={handleMeshClick}
-                        onLoad={handleModelLoad}
-                      />
-                    ) : currentModel === '/models/model21.gltf' ? (
-                      <Model2
-                        onMeshClick={handleMeshClick}
-                        onLoad={handleModelLoad}
-                      />
-                    ) : currentModel === '/models/model3.gltf' ? (
-                      <Model3
-                        onMeshClick={handleMeshClick}
-                        onLoad={handleModelLoad}
-                      />
-                    ) : null}
-                  </ErrorBoundary>
-                )}
+      <Suspense fallback={<LoadingFallback />}>
+              <Canvas camera={{ position: [0, 0, 16], fov: 45 }} shadows style={{ background: '#D2E3EB' }}>
+                {currentModel === '/models/model1.gltf' ? (
+                  <>
+                    <hemisphereLight color={0xffffff} groundColor={0xaaaaaa} intensity={3.0} />
+                    <ambientLight intensity={2.2} />
+                    <directionalLight position={[10, 10, 10]} intensity={3.5} castShadow />
+                    <directionalLight position={[-10, -10, 10]} intensity={2.0} />
+                    <directionalLight position={[0, 10, -10]} intensity={1.5} />
+                  </>
+                ) : null}
+                <directionalLight position={[10, 10, 10]} intensity={3.5} castShadow />
+                <directionalLight position={[-10, -10, 10]} intensity={2.0} />
+                <directionalLight position={[0, 10, -10]} intensity={1.5} />
+          {currentModel && !modelError && (
+            <ErrorBoundary key={currentModel} onError={handleModelError}>
+              {currentModel === '/models/model1.gltf' ? (
+                <Model
+                  url={currentModel}
+                  onMeshClick={handleMeshClick}
+                  onLoad={handleModelLoad}
+                />
+              ) : currentModel === '/models/model21.gltf' ? (
+                <Model2
+                  onMeshClick={handleMeshClick}
+                  onLoad={handleModelLoad}
+                />
+              ) : currentModel === '/models/model3.gltf' ? (
+                <Model3
+                  onMeshClick={handleMeshClick}
+                  onLoad={handleModelLoad}
+                />
+              ) : null}
+            </ErrorBoundary>
+          )}
                 <OrbitControls ref={orbitControlsRef} enablePan enableZoom enableRotate />
-                <Environment preset="city" />
-              </Canvas>
-            </Suspense>
+        </Canvas>
+      </Suspense>
             {/* Error message */}
             {modelError && (
               <div className="absolute inset-0 flex items-center justify-center bg-white bg-opacity-90 z-20">
@@ -500,7 +312,7 @@ const ModelViewer: React.FC = () => {
                   {modelError}
                 </div>
               </div>
-            )}
+        )}
           </div>
         </div>
       </div>
